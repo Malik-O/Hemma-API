@@ -1,11 +1,11 @@
 /**
  * Seed data generator for Groups.
- * Creates 15 groups with varied sizes, emojis, and category subsets.
+ * Creates 15 groups with varied sizes and category subsets.
  */
 import { SeedUser } from './users';
 import { BASE_CATEGORIES, EXTRA_CATEGORIES, SeedCategory } from './categories';
 
-const GROUP_EMOJIS = ['🕌', '🌙', '📖', '⭐', '🤲', '💎', '🏆', '🔥', '🌟', '💪', '👥', '🌿', '🎯', '✨', '🕋'];
+
 
 const GROUP_NAMES = [
   'فريق الفجر', 'مجموعة القرآن', 'أصدقاء الخير', 'سباق الحسنات',
@@ -39,7 +39,6 @@ const getGroupCategories = (groupIndex: number): SeedCategory[] => {
 
 export interface SeedGroup {
   name: string;
-  emoji: string;
   adminUid: string;
   memberUids: string[];
   inviteCode: string;
@@ -73,7 +72,6 @@ export const generateGroups = (users: SeedUser[], count = 15): SeedGroup[] => {
 
     groups.push({
       name: GROUP_NAMES[i % GROUP_NAMES.length],
-      emoji: GROUP_EMOJIS[i % GROUP_EMOJIS.length],
       adminUid: admin.uid,
       memberUids,
       inviteCode: generateInviteCode(i),

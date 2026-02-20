@@ -35,6 +35,41 @@ function getGroupHabitIds(categories: IGroupCategory[]): string[] {
   return categories.flatMap((cat) => cat.items.map((item) => item.id));
 }
 
+// ─── Public Group Info (no auth) ─────────────────────────────────
+
+// @desc    Get basic group info by invite code (public, for join links)
+// @route   GET /api/groups/info/:inviteCode
+// @access  Public
+export const getGroupInfoByCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const code = req.params.inviteCode?.trim().toUpperCase();
+
+    if (!code) {
+      res.status(400).json({ message: 'رمز الدعوة مطلوب' });
+      return;
+    }
+
+    const group = await Group.findOne({ inviteCode: code })
+      .select('_id name memberUids inviteCode')
+      .lean();
+
+    if (!group) {
+      res.status(404).json({ message: 'المجموعة غير موجودة' });
+      return;
+    }
+
+    res.json({
+      _id: group._id,
+      name: group.name,
+      memberCount: group.memberUids?.length || 0,
+      inviteCode: group.inviteCode,
+    });
+  } catch (error) {
+    console.error('[groupController] getGroupInfoByCode error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 // ─── Create Group ────────────────────────────────────────────────
 
 // @desc    Create a new group
@@ -43,7 +78,7 @@ function getGroupHabitIds(categories: IGroupCategory[]): string[] {
 export const createGroup = async (req: Request, res: Response): Promise<void> => {
   try {
     const uid = req.user!.uid;
-    const { name, emoji } = req.body;
+    const { name } = req.body;
 
     if (!name || name.trim().length === 0) {
       res.status(400).json({ message: 'اسم المجموعة مطلوب' });
@@ -54,7 +89,6 @@ export const createGroup = async (req: Request, res: Response): Promise<void> =>
 
     const group = await Group.create({
       name: name.trim(),
-      emoji: emoji || '👥',
       adminUid: uid,
       memberUids: [uid], // admin is also a member
       inviteCode,
@@ -248,7 +282,7 @@ export const updateGroupHabits = async (req: Request, res: Response): Promise<vo
 
 // ─── Update Group Info (Admin Only) ──────────────────────────────
 
-// @desc    Update group name/emoji (admin only)
+// @desc    Update group name (admin only)
 // @route   PATCH /api/groups/:groupId
 // @access  Private (admin only)
 export const updateGroup = async (req: Request, res: Response): Promise<void> => {
@@ -266,9 +300,8 @@ export const updateGroup = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const { name, emoji } = req.body;
+    const { name } = req.body;
     if (name) group.name = name.trim();
-    if (emoji) group.emoji = emoji;
 
     await group.save();
     res.json(formatGroupResponse(group, uid));
@@ -316,7 +349,7 @@ export const getGroupLeaderboard = async (req: Request, res: Response): Promise<
         totalPossible: 0,
       }));
 
-      res.json({ entries, groupName: group.name, groupEmoji: group.emoji });
+      res.json({ entries, groupName: group.name });
       return;
     }
 
@@ -392,7 +425,7 @@ export const getGroupLeaderboard = async (req: Request, res: Response): Promise<
       entry.rank = index + 1;
     });
 
-    res.json({ entries, groupName: group.name, groupEmoji: group.emoji });
+    res.json({ entries, groupName: group.name });
   } catch (error) {
     console.error('[groupController] getGroupLeaderboard error:', error);
     res.status(500).json({ message: 'Server Error' });
@@ -472,7 +505,6 @@ function formatGroupResponse(group: IGroup | Record<string, unknown>, currentUid
   return {
     _id: g._id,
     name: g.name,
-    emoji: g.emoji,
     adminUid: g.adminUid,
     isAdmin: g.adminUid === currentUid,
     memberCount: g.memberUids?.length || 0,

@@ -4,6 +4,7 @@ import {
   createGroup,
   getMyGroups,
   getGroup,
+  getGroupInfoByCode,
   joinGroup,
   leaveGroup,
   deleteGroup,
@@ -15,13 +16,17 @@ import {
 
 const router = express.Router();
 
-// All routes require authentication
+// Public route (no auth required) — must be BEFORE protect()
+router.get('/info/:inviteCode', getGroupInfoByCode);
+
+// All remaining routes require authentication
 router.use(protect);
 
 // Group CRUD
 router.post('/', createGroup);
 router.get('/', getMyGroups);
 router.post('/join', joinGroup);
+router.post('/:groupId/leave', leaveGroup);
 
 // Single group operations
 router.get('/:groupId', getGroup);
