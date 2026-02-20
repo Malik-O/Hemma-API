@@ -40,7 +40,8 @@ export const authUser = async (req: Request, res: Response): Promise<void> => {
         uid: user.uid,
         name: user.displayName,
         email: user.email,
-        isAdmin: false, 
+        photoURL: user.photoURL || '',
+        provider: user.provider,
         token: generateToken(user._id.toString()),
       });
     } else {
@@ -84,6 +85,8 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
         uid: user.uid,
         name: user.displayName,
         email: user.email,
+        photoURL: '',
+        provider: 'local',
         token: generateToken(user._id.toString()),
       });
     } else {
@@ -110,6 +113,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
     }
 
     let user = await User.findOne({ email: payload.email });
+    let isNewUser = false;
 
     if (user) {
       // Update profile info
@@ -117,6 +121,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
       user.photoURL = payload.picture || user.photoURL;
       await user.save();
     } else {
+      isNewUser = true;
       user = await User.create({
         uid: uuidv4(),
         email: payload.email,
@@ -132,6 +137,9 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
       uid: user.uid,
       name: user.displayName,
       email: user.email,
+      photoURL: user.photoURL || payload.picture || '',
+      provider: 'google',
+      isNewUser,
       token: generateToken(user._id.toString()),
     });
   } catch (error: any) {
@@ -152,7 +160,8 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
         uid: user.uid,
         name: user.displayName,
         email: user.email,
-        theme: 'dark', // Placeholder or from user model if extended
+        photoURL: user.photoURL || '',
+        provider: user.provider,
       });
     } else {
       res.status(404);
