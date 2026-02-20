@@ -42,6 +42,7 @@ export const authUser = async (req: Request, res: Response): Promise<void> => {
         email: user.email,
         photoURL: user.photoURL || '',
         provider: user.provider,
+        showOnLeaderboard: user.showOnLeaderboard,
         token: generateToken(user._id.toString()),
       });
     } else {
@@ -87,6 +88,7 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
         email: user.email,
         photoURL: '',
         provider: 'local',
+        showOnLeaderboard: user.showOnLeaderboard,
         token: generateToken(user._id.toString()),
       });
     } else {
@@ -139,6 +141,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
       email: user.email,
       photoURL: user.photoURL || payload.picture || '',
       provider: 'google',
+      showOnLeaderboard: user.showOnLeaderboard,
       isNewUser,
       token: generateToken(user._id.toString()),
     });
@@ -162,6 +165,7 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
         email: user.email,
         photoURL: user.photoURL || '',
         provider: user.provider,
+        showOnLeaderboard: user.showOnLeaderboard,
       });
     } else {
       res.status(404);
@@ -169,5 +173,32 @@ export const getUserProfile = async (req: Request, res: Response): Promise<void>
     }
   } catch (error: any) {
     res.status(404).json({ message: error.message });
+  }
+};
+
+// @desc    Toggle leaderboard visibility
+// @route   PATCH /api/auth/leaderboard-visibility
+// @access  Private
+export const toggleLeaderboardVisibility = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = await User.findById(req.user?._id);
+
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    const { showOnLeaderboard } = req.body as { showOnLeaderboard?: boolean };
+
+    // If a value is provided, use it; otherwise toggle
+    user.showOnLeaderboard =
+      typeof showOnLeaderboard === 'boolean' ? showOnLeaderboard : !user.showOnLeaderboard;
+
+    await user.save();
+
+    res.json({ showOnLeaderboard: user.showOnLeaderboard });
+  } catch (error: any) {
+    console.error('[authController] Toggle leaderboard visibility error:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };

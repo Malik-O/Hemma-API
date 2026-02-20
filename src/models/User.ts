@@ -8,6 +8,7 @@ export interface IUser extends Document {
   photoURL?: string;
   passwordHash?: string;
   provider: 'google' | 'local';
+  showOnLeaderboard: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +21,7 @@ const UserSchema: Schema = new Schema(
     photoURL: { type: String },
     passwordHash: { type: String },
     provider: { type: String, enum: ['google', 'local'], required: true },
+    showOnLeaderboard: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

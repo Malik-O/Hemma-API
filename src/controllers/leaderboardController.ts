@@ -3,6 +3,17 @@ import HabitEntry from '../models/HabitEntry';
 import User from '../models/User';
 
 const XP_PER_HABIT = 10;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 50;
+
+// ─── Types ───────────────────────────────────────────────────────
+
+interface AggregatedUserStats {
+  _id: string; // uid
+  totalCompleted: number;
+  totalHabits: number;
+  dayMap: { dayIndex: number; completed: number }[];
+}
 
 interface LeaderboardEntry {
   rank: number;
@@ -14,114 +25,161 @@ interface LeaderboardEntry {
   completionRate: number;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────
-
-/** Check if a habit value counts as "completed" */
-function isCompleted(value: unknown): boolean {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value > 0;
-  return false;
+interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  currentUserRank: number | null;
 }
 
-/** Calculate stats from a flat list of HabitEntry documents */
-function calculateStats(
-  entries: { dayIndex: number; habitId: string; value: unknown }[]
-): { totalXp: number; streak: number; completionRate: number } {
-  if (entries.length === 0) {
-    return { totalXp: 0, streak: 0, completionRate: 0 };
-  }
+// ─── Helpers ─────────────────────────────────────────────────────
 
-  // Group by day
-  const dayMap = new Map<number, { completed: number; total: number }>();
-
-  for (const entry of entries) {
-    const day = entry.dayIndex;
-    if (!dayMap.has(day)) {
-      dayMap.set(day, { completed: 0, total: 0 });
-    }
-    const stat = dayMap.get(day)!;
-    stat.total++;
-    if (isCompleted(entry.value)) {
-      stat.completed++;
-    }
-  }
-
-  let totalCompleted = 0;
-  let totalHabits = 0;
-
-  for (const stat of dayMap.values()) {
-    totalCompleted += stat.completed;
-    totalHabits += stat.total;
-  }
-
-  // Streak: consecutive days (descending) with at least one completed habit
-  const sortedDays = [...dayMap.keys()].sort((a, b) => b - a);
+/** Calculate streak from per-day completion data (sorted desc by dayIndex) */
+function calculateStreak(dayMap: { dayIndex: number; completed: number }[]): number {
+  const sorted = [...dayMap].sort((a, b) => b.dayIndex - a.dayIndex);
   let streak = 0;
 
-  for (const day of sortedDays) {
-    const stat = dayMap.get(day)!;
-    if (stat.completed > 0) {
+  for (const day of sorted) {
+    if (day.completed > 0) {
       streak++;
     } else {
       break;
     }
   }
 
-  const totalXp = totalCompleted * XP_PER_HABIT;
-  const completionRate =
-    totalHabits > 0 ? Math.round((totalCompleted / totalHabits) * 100) / 100 : 0;
-
-  return { totalXp, streak, completionRate };
+  return streak;
 }
 
 // ─── Controller ──────────────────────────────────────────────────
 
-// @desc    Get leaderboard
-// @route   GET /api/leaderboard
-// @access  Public
+// @desc    Get paginated leaderboard (ranked by XP descending)
+// @route   GET /api/leaderboard?page=1&pageSize=20
+// @access  Private
 export const getLeaderboard = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Get all entries grouped by user
-    const allEntries = await HabitEntry.find({}).lean();
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(
+      MAX_PAGE_SIZE,
+      Math.max(1, parseInt(req.query.pageSize as string) || DEFAULT_PAGE_SIZE)
+    );
 
-    // Group by uid
-    const userEntriesMap = new Map<string, typeof allEntries>();
-    for (const entry of allEntries) {
-      const uid = entry.uid;
-      if (!userEntriesMap.has(uid)) {
-        userEntriesMap.set(uid, []);
-      }
-      userEntriesMap.get(uid)!.push(entry);
+    // Get UIDs who opted-in to the leaderboard
+    const visibleUsers = await User.find({ showOnLeaderboard: true })
+      .select('uid displayName photoURL')
+      .lean();
+
+    const visibleUids = visibleUsers.map((u) => u.uid);
+
+    if (visibleUids.length === 0) {
+      res.json({
+        entries: [],
+        page,
+        pageSize,
+        totalCount: 0,
+        totalPages: 0,
+        currentUserRank: null,
+      } satisfies LeaderboardResponse);
+      return;
     }
 
-    const entries: LeaderboardEntry[] = await Promise.all(
-      [...userEntriesMap.entries()].map(async ([uid, userEntries]) => {
-        const { totalXp, streak, completionRate } = calculateStats(userEntries);
-        const user = await User.findOne({ uid }).select('displayName photoURL');
+    // Build a uid → user info lookup
+    const userLookup = new Map(
+      visibleUsers.map((u) => [u.uid, { displayName: u.displayName, photoURL: u.photoURL || null }])
+    );
+
+    // Aggregate stats per user via MongoDB pipeline for high performance
+    const pipeline = [
+      { $match: { uid: { $in: visibleUids } } },
+      {
+        $group: {
+          _id: { uid: '$uid', dayIndex: '$dayIndex' },
+          completed: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ['$value', true] },
+                    { $and: [{ $isNumber: '$value' }, { $gt: ['$value', 0] }] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          total: { $sum: 1 },
+        },
+      },
+      {
+        $group: {
+          _id: '$_id.uid',
+          totalCompleted: { $sum: '$completed' },
+          totalHabits: { $sum: '$total' },
+          dayMap: {
+            $push: {
+              dayIndex: '$_id.dayIndex',
+              completed: '$completed',
+            },
+          },
+        },
+      },
+    ];
+
+    const aggregated: AggregatedUserStats[] = await HabitEntry.aggregate(pipeline);
+
+    // Build full ranked list
+    const rankedEntries: LeaderboardEntry[] = aggregated
+      .map((stat) => {
+        const userInfo = userLookup.get(stat._id);
+        const streak = calculateStreak(stat.dayMap);
+        const totalXp = stat.totalCompleted * XP_PER_HABIT;
+        const completionRate =
+          stat.totalHabits > 0
+            ? Math.round((stat.totalCompleted / stat.totalHabits) * 100) / 100
+            : 0;
 
         return {
           rank: 0,
-          uid,
-          displayName: user ? user.displayName : 'Unknown User',
-          photoURL: user ? user.photoURL || null : null,
+          uid: stat._id,
+          displayName: userInfo?.displayName || 'مستخدم',
+          photoURL: userInfo?.photoURL || null,
           totalXp,
           streak,
           completionRate,
         };
       })
-    );
-
-    // Sort by XP descending, then by streak descending
-    entries.sort((a, b) => b.totalXp - a.totalXp || b.streak - a.streak);
+      .sort((a, b) => b.totalXp - a.totalXp || b.streak - a.streak);
 
     // Assign ranks
-    entries.forEach((entry, index) => {
+    rankedEntries.forEach((entry, index) => {
       entry.rank = index + 1;
     });
 
-    res.json(entries.slice(0, 50)); // Return top 50
-  } catch (error: any) {
-    console.error(error);
+    // Find current user's rank (if authenticated)
+    const currentUid = req.user?.uid || null;
+    const currentUserRank =
+      currentUid ? rankedEntries.find((e) => e.uid === currentUid)?.rank ?? null : null;
+
+    // Paginate
+    const totalCount = rankedEntries.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const start = (page - 1) * pageSize;
+    const entries = rankedEntries.slice(start, start + pageSize);
+
+    const response: LeaderboardResponse = {
+      entries,
+      page,
+      pageSize,
+      totalCount,
+      totalPages,
+      currentUserRank,
+    };
+
+    res.json(response);
+  } catch (error: unknown) {
+    console.error('[leaderboardController] Error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 };

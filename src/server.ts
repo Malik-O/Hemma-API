@@ -9,6 +9,7 @@ import connectDB from './config/db';
 import authRoutes from './routes/authRoutes';
 import syncRoutes from './routes/syncRoutes';
 import leaderboardRoutes from './routes/leaderboardRoutes';
+import healthRoutes from './routes/healthRoutes';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use(morgan('dev'));
 app.use('/api/auth', authRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/health', healthRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('API is running...');
