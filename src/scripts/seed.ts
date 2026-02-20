@@ -1,179 +1,185 @@
+/**
+ * Database Seed Script
+ * ====================
+ * Seeds the database with 120 users, 15 groups, categories, habit entries,
+ * and sync data across all tables.
+ *
+ * Usage: npm run seed
+ */
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
+
+// Models
 import User from '../models/User';
 import HabitCategory from '../models/HabitCategory';
 import HabitEntry from '../models/HabitEntry';
+import Group from '../models/Group';
+import SyncData from '../models/SyncData';
 
-// Load .env relative to this file
+// Data generators
+import { generateUsers } from './seed-data/users';
+import { getCategoriesForUser, SeedCategory } from './seed-data/categories';
+import { generateEntries } from './seed-data/entries';
+import { generateGroups } from './seed-data/groups';
+import { generateSyncData } from './seed-data/syncData';
+
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const connectDB = async () => {
-    try {
-        const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/ramadan_habits';
-        await mongoose.connect(uri);
-        console.log(`MongoDB Connected: ${uri}`);
-    } catch (error) {
-        console.error('Database connection failed', error);
-        process.exit(1);
-    }
+// ─── DB Connection ────────────────────────────────────────────────
+
+const connectDB = async (): Promise<void> => {
+  try {
+    const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/ramadan_habits';
+    await mongoose.connect(uri);
+    console.log(`✅ MongoDB Connected: ${uri}`);
+  } catch (error) {
+    console.error('❌ Database connection failed', error);
+    process.exit(1);
+  }
 };
 
-const users = [
-    {
-        uid: 'user_1_ahmed',
-        email: 'ahmed@test.com',
-        displayName: 'Ahmed Ali',
-        photoURL: 'https://ui-avatars.com/api/?name=Ahmed+Ali&background=random',
-        provider: 'local',
-        showOnLeaderboard: true,
-    },
-    {
-        uid: 'user_2_fatima',
-        email: 'fatima@test.com',
-        displayName: 'Fatima Zohra',
-        photoURL: 'https://ui-avatars.com/api/?name=Fatima+Zohra&background=random',
-        provider: 'local',
-        showOnLeaderboard: true,
-    },
-    {
-        uid: 'user_3_omar',
-        email: 'omar@test.com',
-        displayName: 'Omar Khaled',
-        photoURL: 'https://ui-avatars.com/api/?name=Omar+Khaled&background=random',
-        provider: 'local',
-        showOnLeaderboard: true,
-    },
-     {
-        uid: 'user_4_sara',
-        email: 'sara@test.com',
-        displayName: 'Sara Hassan',
-        photoURL: 'https://ui-avatars.com/api/?name=Sara+Hassan&background=random',
-        provider: 'local',
-        showOnLeaderboard: true,
-    },
-     {
-        uid: 'user_5_yousef',
-        email: 'yousef@test.com',
-        displayName: 'Yousef Salem',
-        photoURL: 'https://ui-avatars.com/api/?name=Yousef+Salem&background=random',
-        provider: 'local',
-        showOnLeaderboard: true,
-    },
-];
+// ─── Cleanup ──────────────────────────────────────────────────────
 
-const categoriesData = [
-    {
-        categoryId: 'prayers',
-        name: 'الصلوات',
-        icon: 'Moon',
-        items: [
-            { id: 'fajr', label: 'الفجر', type: 'boolean' as const },
-            { id: 'dhuhr', label: 'الظهر', type: 'boolean' as const },
-            { id: 'asr', label: 'العصر', type: 'boolean' as const },
-            { id: 'maghrib', label: 'المغرب', type: 'boolean' as const },
-            { id: 'isha', label: 'العشاء', type: 'boolean' as const },
-        ],
-        sortOrder: 1,
-    },
-    {
-        categoryId: 'quran',
-        name: 'القرآن',
-        icon: 'BookOpen',
-        items: [
-            { id: 'pages_read', label: 'صفحات مقروءة', type: 'number' as const },
-        ],
-        sortOrder: 2,
-    },
-    {
-        categoryId: 'sunan',
-        name: 'السنن',
-        icon: 'Star',
-        items: [
-            { id: 'duha', label: 'صلاة الضحى', type: 'boolean' as const },
-            { id: 'witir', label: 'صلاة الوتر', type: 'boolean' as const },
-        ],
-        sortOrder: 3,
-    },
-];
+const cleanupSeedData = async (userIds: string[]): Promise<void> => {
+  console.log('🧹 Cleaning up existing seed data...');
 
-const seed = async () => {
+  await Promise.all([
+    User.deleteMany({ uid: { $in: userIds } }),
+    HabitCategory.deleteMany({ uid: { $in: userIds } }),
+    HabitEntry.deleteMany({ uid: { $in: userIds } }),
+    SyncData.deleteMany({ uid: { $in: userIds } }),
+    Group.deleteMany({ adminUid: { $in: userIds } }),
+  ]);
+
+  console.log('   ✔ Cleanup complete');
+};
+
+// ─── Seed Users ───────────────────────────────────────────────────
+
+const seedUsers = async (users: ReturnType<typeof generateUsers>): Promise<void> => {
+  console.log(`👤 Seeding ${users.length} users...`);
+
+  await User.insertMany(
+    users.map((u) => ({
+      ...u,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+  );
+
+  console.log(`   ✔ ${users.length} users inserted`);
+};
+
+// ─── Seed Categories ──────────────────────────────────────────────
+
+const seedCategories = async (
+  users: ReturnType<typeof generateUsers>,
+): Promise<Map<string, SeedCategory[]>> => {
+  console.log('📂 Seeding categories...');
+
+  const userCategoriesMap = new Map<string, SeedCategory[]>();
+  const allCategories: Array<{ uid: string } & SeedCategory> = [];
+
+  for (let i = 0; i < users.length; i++) {
+    const categories = getCategoriesForUser(i);
+    userCategoriesMap.set(users[i].uid, categories);
+
+    for (const cat of categories) {
+      allCategories.push({ uid: users[i].uid, ...cat });
+    }
+  }
+
+  await HabitCategory.insertMany(allCategories);
+  console.log(`   ✔ ${allCategories.length} categories inserted`);
+
+  return userCategoriesMap;
+};
+
+// ─── Seed Entries ─────────────────────────────────────────────────
+
+const seedEntries = async (
+  users: ReturnType<typeof generateUsers>,
+  userCategories: Map<string, SeedCategory[]>,
+): Promise<void> => {
+  console.log('📝 Seeding habit entries (30 days)...');
+
+  const entries = generateEntries(users, userCategories);
+
+  // Batch insert in chunks of 5000 to avoid memory issues
+  const BATCH_SIZE = 5000;
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    const batch = entries.slice(i, i + BATCH_SIZE);
+    await HabitEntry.insertMany(batch, { ordered: false });
+    console.log(`   📊 Inserted batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(entries.length / BATCH_SIZE)}`);
+  }
+
+  console.log(`   ✔ ${entries.length} habit entries inserted`);
+};
+
+// ─── Seed Groups ──────────────────────────────────────────────────
+
+const seedGroups = async (users: ReturnType<typeof generateUsers>): Promise<void> => {
+  console.log('👥 Seeding groups...');
+
+  const groups = generateGroups(users);
+
+  await Group.insertMany(
+    groups.map((g) => ({
+      ...g,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+  );
+
+  console.log(`   ✔ ${groups.length} groups inserted`);
+};
+
+// ─── Seed SyncData ────────────────────────────────────────────────
+
+const seedSyncData = async (users: ReturnType<typeof generateUsers>): Promise<void> => {
+  console.log('🔄 Seeding sync data...');
+
+  const syncData = generateSyncData(users);
+  await SyncData.insertMany(syncData);
+
+  console.log(`   ✔ ${syncData.length} sync records inserted`);
+};
+
+// ─── Main ─────────────────────────────────────────────────────────
+
+export const runSeed = async (isScript = false): Promise<void> => {
+  if (isScript) {
     await connectDB();
+  }
 
-    console.log('Cleaning up existing test data...');
-    // We only remove data for our test users to preserve real data (if any)
-    const userIds = users.map(u => u.uid);
-    
-    await User.deleteMany({ uid: { $in: userIds } });
-    await HabitCategory.deleteMany({ uid: { $in: userIds } });
-    await HabitEntry.deleteMany({ uid: { $in: userIds } });
 
-    console.log('Seeding Users...');
-    // Using simple loop to allow validation if needed, but insertMany is faster
-    await User.insertMany(users.map(u => ({
-        ...u,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    })));
+  const users = generateUsers(120);
+  const userIds = users.map((u) => u.uid);
 
-    console.log('Seeding Categories...');
-    const allCategories = [];
-    for (const user of users) {
-        for (const cat of categoriesData) {
-            allCategories.push({
-                uid: user.uid,
-                ...cat,
-            });
-        }
-    }
-    await HabitCategory.insertMany(allCategories);
+  await cleanupSeedData(userIds);
+  await seedUsers(users);
 
-    console.log('Seeding Habit Entries...');
-    const entries = [];
-    const DAYS_TO_SEED = 15; // Seed 15 days of data
+  const userCategories = await seedCategories(users);
 
-    for (const user of users) {
-        // Random "consistency" factor for each user (0.4 to 0.95)
-        // Some users are more consistent than others
-        const consistency = 0.4 + Math.random() * 0.55; 
+  await seedEntries(users, userCategories);
+  await seedGroups(users);
+  await seedSyncData(users);
 
-        for (let day = 0; day < DAYS_TO_SEED; day++) {
-             // Each category
-             for (const cat of categoriesData) {
-                 for (const item of cat.items) {
-                     let value: boolean | number;
-                     
-                     // Add some randomness to "miss" a habit even if consistent
-                     const performed = Math.random() < consistency;
+  console.log('\n🎉 Seed completed successfully!');
+  console.log('─────────────────────────────────');
+  console.log(`   Users:       120`);
+  console.log(`   Groups:      15`);
+  console.log(`   Categories:  ${[...userCategories.values()].reduce((sum, cats) => sum + cats.length, 0)}`);
+  console.log(`   Days seeded: 30`);
+  console.log('─────────────────────────────────');
 
-                     if (item.type === 'boolean') {
-                         value = performed;
-                     } else {
-                         // Number (like quran pages)
-                         // If performed, read between 5 and 20 pages
-                         value = performed ? Math.floor(Math.random() * 15) + 5 : 0;
-                     }
-
-                     entries.push({
-                         uid: user.uid,
-                         dayIndex: day,
-                         habitId: item.id,
-                         value: value,
-                         updatedAt: new Date(),
-                     });
-                 }
-             }
-        }
-    }
-    
-    // Batch insert entries
-    if (entries.length > 0) {
-        await HabitEntry.insertMany(entries);
-        console.log(`Inserted ${entries.length} habit entries.`);
-    }
-
-    console.log('Seed completed successfully!');
+  if (isScript) {
     process.exit(0);
+  }
 };
 
-seed();
+// Check if run directly via ts-node or node
+if (typeof require !== 'undefined' && require.main === module) {
+  runSeed(true);
+}
