@@ -12,7 +12,7 @@ interface AggregatedUserStats {
   _id: string; // uid
   totalCompleted: number;
   totalHabits: number;
-  dayMap: { dayIndex: number; completed: number }[];
+  dayMap: { date: string; completed: number }[];
 }
 
 interface LeaderboardEntry {
@@ -36,14 +36,25 @@ interface LeaderboardResponse {
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-/** Calculate streak from per-day completion data (sorted desc by dayIndex) */
-function calculateStreak(dayMap: { dayIndex: number; completed: number }[]): number {
-  const sorted = [...dayMap].sort((a, b) => b.dayIndex - a.dayIndex);
+/** Calculate streak from per-day completion data (sorted desc by date) */
+function calculateStreak(dayMap: { date: string; completed: number }[]): number {
+  const sorted = [...dayMap]
+    .map((d) => ({ date: new Date(d.date), completed: d.completed }))
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
+    
   let streak = 0;
+  let currentDate = sorted[0]?.date ? new Date(sorted[0].date) : null;
+  
+  if (!currentDate) return 0;
 
   for (const day of sorted) {
     if (day.completed > 0) {
-      streak++;
+      if (day.date.getTime() === currentDate.getTime()) {
+        streak++;
+        currentDate.setDate(currentDate.getDate() - 1);
+      } else if (day.date.getTime() < currentDate.getTime()) {
+        break;
+      }
     } else {
       break;
     }
@@ -94,7 +105,7 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
       { $match: { uid: { $in: visibleUids } } },
       {
         $group: {
-          _id: { uid: '$uid', dayIndex: '$dayIndex' },
+          _id: { uid: '$uid', date: '$date' },
           completed: {
             $sum: {
               $cond: [
@@ -119,7 +130,7 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
           totalHabits: { $sum: '$total' },
           dayMap: {
             $push: {
-              dayIndex: '$_id.dayIndex',
+              date: '$_id.date',
               completed: '$completed',
             },
           },

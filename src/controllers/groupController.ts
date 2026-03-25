@@ -466,7 +466,7 @@ export const getMemberProgress = async (req: Request, res: Response): Promise<vo
       uid: memberUid,
       habitId: { $in: habitIds },
     })
-      .select('dayIndex habitId value updatedAt')
+      .select('date habitId value updatedAt')
       .lean();
 
     // Get member info
@@ -475,12 +475,13 @@ export const getMemberProgress = async (req: Request, res: Response): Promise<vo
       .lean();
 
     // Organize by day
-    const dayMap: Record<number, Record<string, boolean | number>> = {};
+    // Returns `date` instead of `dayIndex` string
+    const dayMap: Record<string, Record<string, boolean | number>> = {};
     for (const entry of entries) {
-      if (!dayMap[entry.dayIndex]) {
-        dayMap[entry.dayIndex] = {};
+      if (!dayMap[entry.date as unknown as string]) {
+        dayMap[entry.date as unknown as string] = {};
       }
-      dayMap[entry.dayIndex][entry.habitId] = entry.value;
+      dayMap[entry.date as unknown as string][entry.habitId] = entry.value;
     }
 
     res.json({

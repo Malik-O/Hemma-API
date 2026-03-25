@@ -5,7 +5,7 @@ import HabitCategory from '../models/HabitCategory';
 // ─── Types ───────────────────────────────────────────────────────
 
 interface EntryPayload {
-  dayIndex: number;
+  date: string;
   habitId: string;
   value: boolean | number;
   updatedAt: string; // ISO string from client
@@ -42,7 +42,7 @@ export const uploadSyncData = async (req: Request, res: Response): Promise<void>
     if (entries?.length) {
       const bulkOps = entries.map((entry) => ({
         updateOne: {
-          filter: { uid, dayIndex: entry.dayIndex, habitId: entry.habitId },
+          filter: { uid, date: entry.date, habitId: entry.habitId },
           update: {
             $set: {
               value: entry.value,
@@ -50,7 +50,7 @@ export const uploadSyncData = async (req: Request, res: Response): Promise<void>
             },
             $setOnInsert: {
               uid,
-              dayIndex: entry.dayIndex,
+              date: entry.date,
               habitId: entry.habitId,
               createdAt: new Date(),
             },
@@ -63,12 +63,12 @@ export const uploadSyncData = async (req: Request, res: Response): Promise<void>
       // We do this by fetching existing, comparing, then bulk writing only newer ones
       const existingEntries = await HabitEntry.find({ uid }).lean();
       const existingMap = new Map(
-        existingEntries.map((e) => [`${e.dayIndex}:${e.habitId}`, e])
+        existingEntries.map((e) => [`${e.date}:${e.habitId}`, e])
       );
 
       const filteredOps = entries
         .filter((entry) => {
-          const key = `${entry.dayIndex}:${entry.habitId}`;
+          const key = `${entry.date}:${entry.habitId}`;
           const existing = existingMap.get(key);
           if (!existing) return true; // New entry — always insert
           const clientTime = new Date(entry.updatedAt).getTime();
@@ -77,7 +77,7 @@ export const uploadSyncData = async (req: Request, res: Response): Promise<void>
         })
         .map((entry) => ({
           updateOne: {
-            filter: { uid, dayIndex: entry.dayIndex, habitId: entry.habitId },
+            filter: { uid, date: entry.date, habitId: entry.habitId },
             update: {
               $set: {
                 value: entry.value,
@@ -85,7 +85,7 @@ export const uploadSyncData = async (req: Request, res: Response): Promise<void>
               },
               $setOnInsert: {
                 uid,
-                dayIndex: entry.dayIndex,
+                date: entry.date,
                 habitId: entry.habitId,
                 createdAt: new Date(),
               },
@@ -158,7 +158,7 @@ export const uploadSyncData = async (req: Request, res: Response): Promise<void>
 
     res.json({
       entries: mergedEntries.map((e) => ({
-        dayIndex: e.dayIndex,
+        date: e.date,
         habitId: e.habitId,
         value: e.value,
         updatedAt: e.updatedAt.toISOString(),
@@ -199,7 +199,7 @@ export const downloadSyncData = async (req: Request, res: Response): Promise<voi
 
     res.json({
       entries: entries.map((e) => ({
-        dayIndex: e.dayIndex,
+        date: e.date,
         habitId: e.habitId,
         value: e.value,
         updatedAt: e.updatedAt.toISOString(),
@@ -242,6 +242,54 @@ export const resetSyncData = async (req: Request, res: Response): Promise<void> 
   } catch (error: any) {
     console.error('[syncController] Reset error:', error);
     res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// ─── Migration: Migrate dayIndex to date  ────────────────────────
+
+// @desc    Convert all HabitEntries from dayIndex to date exactly
+// @route   POST /api/sync/migrate-dates
+// @access  Private (or public depending on setup)
+export const migrateDates = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const start = new Date('2026-02-18T00:00:00');
+    // Find docs that still contain a dayIndex field
+    const entries = await HabitEntry.find({ dayIndex: { $exists: true } }).lean();
+
+    let migrated = 0;
+    const bulkOps = [];
+
+    for (const entry of entries) {
+      if ('dayIndex' in entry && typeof entry.dayIndex === 'number') {
+        const d = new Date(start.getTime());
+        d.setDate(d.getDate() + entry.dayIndex);
+        
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: entry._id },
+            update: {
+              $set: { date: dateStr },
+              $unset: { dayIndex: "" },
+            },
+          },
+        });
+        migrated++;
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      await HabitEntry.bulkWrite(bulkOps as any);
+    }
+
+    res.json({ message: `Migration successful. Migrated ${migrated} entries.` });
+  } catch (error: any) {
+    console.error('[syncController] Migration error:', error);
+    res.status(500).json({ message: 'Server Error during migration' });
   }
 };
 
