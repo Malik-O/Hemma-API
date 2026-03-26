@@ -4,6 +4,14 @@ import Group, { IGroup, IGroupCategory, IGroupHabitItem } from '../models/Group'
 import HabitEntry from '../models/HabitEntry';
 import User from '../models/User';
 
+function isSystemAdmin(email: string): boolean {
+  const adminEmails = (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(email.toLowerCase());
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 /** Generate a unique 6-char invite code */
@@ -135,7 +143,7 @@ export const getGroup = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (!group.memberUids.includes(uid)) {
+    if (!group.memberUids.includes(uid) && !isSystemAdmin(req.user!.email)) {
       res.status(403).json({ message: 'أنت لست عضواً في هذه المجموعة' });
       return;
     }
@@ -259,7 +267,7 @@ export const updateGroupHabits = async (req: Request, res: Response): Promise<vo
     }
 
     if (group.adminUid !== uid) {
-      res.status(403).json({ message: 'فقط المسؤول يمكنه تعديل العادات' });
+      res.status(403).json({ message: 'فقط المسؤول يمكنه تعديل العبادات' });
       return;
     }
 
@@ -326,7 +334,7 @@ export const getGroupLeaderboard = async (req: Request, res: Response): Promise<
       return;
     }
 
-    if (!group.memberUids.includes(uid)) {
+    if (!group.memberUids.includes(uid) && !isSystemAdmin(req.user!.email)) {
       res.status(403).json({ message: 'أنت لست عضواً في هذه المجموعة' });
       return;
     }
@@ -449,7 +457,7 @@ export const getMemberProgress = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    if (group.adminUid !== uid) {
+    if (group.adminUid !== uid && !isSystemAdmin(req.user!.email)) {
       res.status(403).json({ message: 'فقط المسؤول يمكنه عرض تفاصيل الأعضاء' });
       return;
     }
