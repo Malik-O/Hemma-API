@@ -16,6 +16,7 @@ import HabitCategory from '../models/HabitCategory';
 import HabitEntry from '../models/HabitEntry';
 import Group from '../models/Group';
 import SyncData from '../models/SyncData';
+import HabitTemplate from '../models/HabitTemplate';
 
 // Data generators
 import { generateUsers } from './seed-data/users';
@@ -41,15 +42,19 @@ const connectDB = async (): Promise<void> => {
 
 // ─── Cleanup ──────────────────────────────────────────────────────
 
-const cleanupSeedData = async (userIds: string[]): Promise<void> => {
+const cleanupSeedData = async (): Promise<void> => {
   console.log('🧹 Cleaning up existing seed data...');
 
+  const seedMatch = { $regex: /^seed_user_/ };
+
   await Promise.all([
-    User.deleteMany({ uid: { $in: userIds } }),
-    HabitCategory.deleteMany({ uid: { $in: userIds } }),
-    HabitEntry.deleteMany({ uid: { $in: userIds } }),
-    SyncData.deleteMany({ uid: { $in: userIds } }),
-    Group.deleteMany({ adminUid: { $in: userIds } }),
+    User.deleteMany({ uid: seedMatch }),
+    HabitCategory.deleteMany({ uid: seedMatch }),
+    HabitEntry.deleteMany({ uid: seedMatch }),
+    SyncData.deleteMany({ uid: seedMatch }),
+    Group.deleteMany({ adminUid: seedMatch }),
+    HabitTemplate.deleteMany({ authorUid: seedMatch }),
+    Group.updateMany({}, { $pull: { memberUids: seedMatch as any } }),
   ]);
 
   console.log('   ✔ Cleanup complete');
@@ -155,9 +160,8 @@ export const runSeed = async (isScript = false): Promise<void> => {
 
 
   const users = generateUsers(120);
-  const userIds = users.map((u) => u.uid);
 
-  await cleanupSeedData(userIds);
+  await cleanupSeedData();
   await seedUsers(users);
 
   const userCategories = await seedCategories(users);
@@ -179,7 +183,26 @@ export const runSeed = async (isScript = false): Promise<void> => {
   }
 };
 
+export const reverseSeed = async (isScript = false): Promise<void> => {
+  if (isScript) {
+    await connectDB();
+  }
+
+  await cleanupSeedData();
+
+  console.log('\n🧹 Seed reversed successfully!');
+
+  if (isScript) {
+    process.exit(0);
+  }
+};
+
 // Check if run directly via ts-node or node
 if (typeof require !== 'undefined' && require.main === module) {
-  runSeed(true);
+  const args = process.argv.slice(2);
+  if (args.includes('--reverse')) {
+    reverseSeed(true);
+  } else {
+    runSeed(true);
+  }
 }

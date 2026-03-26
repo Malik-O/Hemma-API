@@ -12,6 +12,7 @@ import leaderboardRoutes from './routes/leaderboardRoutes';
 import healthRoutes from './routes/healthRoutes';
 import groupRoutes from './routes/groupRoutes';
 import seedRoutes from './routes/seedRoutes';
+import templateRoutes from './routes/templateRoutes';
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/seed', seedRoutes);
+app.use('/api/templates', templateRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('API is running...');

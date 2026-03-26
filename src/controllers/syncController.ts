@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import HabitEntry from '../models/HabitEntry';
 import HabitCategory from '../models/HabitCategory';
+import type { HabitRepeat } from '../models/HabitCategory';
+import { filterHabitsForDate } from '../utils/habitSchedule';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -15,7 +17,7 @@ interface CategoryPayload {
   categoryId: string;
   name: string;
   icon: string;
-  items: { id: string; label: string; type: 'boolean' | 'number' }[];
+  items: { id: string; label: string; type: 'boolean' | 'number'; repeat?: HabitRepeat }[];
   sortOrder: number;
   updatedAt: string; // ISO string from client
 }
@@ -293,3 +295,41 @@ export const migrateDates = async (req: Request, res: Response): Promise<void> =
   }
 };
 
+// ─── Habits for a specific date ──────────────────────────────────
+
+// @desc    Get user habits filtered by a specific date
+// @route   GET /api/sync/habits-for-date?date=YYYY-MM-DD
+// @access  Private
+export const getHabitsForDate = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+
+  const uid = req.user.uid;
+  const dateStr = req.query.date as string;
+
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    res.status(400).json({ message: 'Valid date query parameter required (YYYY-MM-DD)' });
+    return;
+  }
+
+  try {
+    const categories = await HabitCategory.find({ uid }).sort({ sortOrder: 1 }).lean();
+
+    const filteredCategories = categories
+      .map((cat) => ({
+        categoryId: cat.categoryId,
+        name: cat.name,
+        icon: cat.icon,
+        items: filterHabitsForDate(cat.items, dateStr, cat.createdAt),
+        sortOrder: cat.sortOrder,
+      }))
+      .filter((cat) => cat.items.length > 0);
+
+    res.json({ date: dateStr, categories: filteredCategories });
+  } catch (error: any) {
+    console.error('[syncController] habitsForDate error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};

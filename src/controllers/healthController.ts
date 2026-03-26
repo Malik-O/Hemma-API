@@ -4,6 +4,7 @@ import User from '../models/User';
 import HabitEntry from '../models/HabitEntry';
 import HabitCategory from '../models/HabitCategory';
 import SyncData from '../models/SyncData';
+import HabitTemplate from '../models/HabitTemplate';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -89,6 +90,10 @@ export const getHealth = async (_req: Request, res: Response): Promise<void> => 
 
   checks['collection:syncData'] = await runCheck(async () => {
     await SyncData.countDocuments();
+  });
+
+  checks['collection:habitTemplates'] = await runCheck(async () => {
+    await HabitTemplate.countDocuments();
   });
 
   // ─── Aggregate status ─────────────────────────────────────────
