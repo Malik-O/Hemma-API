@@ -228,3 +228,31 @@ export const toggleLeaderboardVisibility = async (req: Request, res: Response): 
     res.status(500).json({ message: 'Server Error' });
   }
 };
+
+// @desc    Update user profile name
+// @route   PATCH /api/auth/name
+// @access  Private
+export const updateProfileName = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = await User.findById(req.user?._id);
+
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    const { name } = req.body;
+
+    if (name && typeof name === 'string' && name.trim().length > 0) {
+      user.displayName = name.trim();
+      await user.save();
+    }
+
+    res.json({
+        name: user.displayName,
+    });
+  } catch (error: any) {
+    console.error('[authController] Update profile name error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
