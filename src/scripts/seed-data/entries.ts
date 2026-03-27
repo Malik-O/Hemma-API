@@ -8,7 +8,7 @@ import { SeedCategory, SeedCategoryItem } from './categories';
 
 export interface SeedEntry {
   uid: string;
-  dayIndex: number;
+  date: string;
   habitId: string;
   value: boolean | number;
   updatedAt: Date;
@@ -85,9 +85,15 @@ const generateSingleEntry = (
       : 0;
   }
 
+  // Generate a valid YYYY-MM-DD date string starting from 2025-03-01
+  const baseDate = new Date('2025-03-01');
+  const d = new Date(baseDate);
+  d.setDate(baseDate.getDate() + dayIndex);
+  const dateStr = d.toISOString().split('T')[0];
+
   return {
     uid,
-    dayIndex,
+    date: dateStr,
     habitId: item.id,
     value,
     updatedAt: new Date(),

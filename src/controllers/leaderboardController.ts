@@ -6,6 +6,11 @@ const XP_PER_HABIT = 10;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
+// ─── Cache ───────────────────────────────────────────────────────
+let cachedLeaderboard: LeaderboardEntry[] | null = null;
+let lastCacheTime: number = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+
 // ─── Types ───────────────────────────────────────────────────────
 
 interface AggregatedUserStats {
@@ -76,32 +81,28 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
       Math.max(1, parseInt(req.query.pageSize as string) || DEFAULT_PAGE_SIZE)
     );
 
-    // Get UIDs who opted-in to the leaderboard
-    const visibleUsers = await User.find({ showOnLeaderboard: true })
-      .select('uid displayName photoURL')
-      .lean();
+    const now = Date.now();
+    let rankedEntries: LeaderboardEntry[] = [];
 
-    const visibleUids = visibleUsers.map((u) => u.uid);
+    // Serve from cache if valid
+    if (cachedLeaderboard && now - lastCacheTime < CACHE_TTL) {
+      rankedEntries = cachedLeaderboard;
+    } else {
+      // Get UIDs who opted-in to the leaderboard
+      const visibleUsers = await User.find({ showOnLeaderboard: true })
+        .select('uid displayName photoURL')
+        .lean();
 
-    if (visibleUids.length === 0) {
-      res.json({
-        entries: [],
-        page,
-        pageSize,
-        totalCount: 0,
-        totalPages: 0,
-        currentUserRank: null,
-      } satisfies LeaderboardResponse);
-      return;
-    }
+      const visibleUids = visibleUsers.map((u) => u.uid);
 
-    // Build a uid → user info lookup
-    const userLookup = new Map(
-      visibleUsers.map((u) => [u.uid, { displayName: u.displayName, photoURL: u.photoURL || null }])
-    );
+      if (visibleUids.length > 0) {
+        // Build a uid → user info lookup
+        const userLookup = new Map(
+          visibleUsers.map((u) => [u.uid, { displayName: u.displayName, photoURL: u.photoURL || null }])
+        );
 
-    // Aggregate stats per user via MongoDB pipeline for high performance
-    const pipeline = [
+        // Aggregate stats per user via MongoDB pipeline for high performance
+        const pipeline = [
       { $match: { uid: { $in: visibleUids } } },
       {
         $group: {
@@ -138,35 +139,41 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
       },
     ];
 
-    const aggregated: AggregatedUserStats[] = await HabitEntry.aggregate(pipeline);
+        const aggregated: AggregatedUserStats[] = await HabitEntry.aggregate(pipeline);
 
-    // Build full ranked list
-    const rankedEntries: LeaderboardEntry[] = aggregated
-      .map((stat) => {
-        const userInfo = userLookup.get(stat._id);
-        const streak = calculateStreak(stat.dayMap);
-        const totalXp = stat.totalCompleted * XP_PER_HABIT;
-        const completionRate =
-          stat.totalHabits > 0
-            ? Math.round((stat.totalCompleted / stat.totalHabits) * 100) / 100
-            : 0;
+        // Build full ranked list
+        rankedEntries = aggregated
+          .map((stat) => {
+            const userInfo = userLookup.get(stat._id);
+            const streak = calculateStreak(stat.dayMap);
+            const totalXp = stat.totalCompleted * XP_PER_HABIT;
+            const completionRate =
+              stat.totalHabits > 0
+                ? Math.round((stat.totalCompleted / stat.totalHabits) * 100) / 100
+                : 0;
 
-        return {
-          rank: 0,
-          uid: stat._id,
-          displayName: userInfo?.displayName || 'مستخدم',
-          photoURL: userInfo?.photoURL || null,
-          totalXp,
-          streak,
-          completionRate,
-        };
-      })
-      .sort((a, b) => b.totalXp - a.totalXp || b.streak - a.streak);
+            return {
+              rank: 0,
+              uid: stat._id,
+              displayName: userInfo?.displayName || 'مستخدم',
+              photoURL: userInfo?.photoURL || null,
+              totalXp,
+              streak,
+              completionRate,
+            };
+          })
+          .sort((a, b) => b.totalXp - a.totalXp || b.streak - a.streak);
 
-    // Assign ranks
-    rankedEntries.forEach((entry, index) => {
-      entry.rank = index + 1;
-    });
+        // Assign ranks
+        rankedEntries.forEach((entry, index) => {
+          entry.rank = index + 1;
+        });
+      }
+
+      // Update cache
+      cachedLeaderboard = rankedEntries;
+      lastCacheTime = now;
+    }
 
     // Find current user's rank (if authenticated)
     const currentUid = req.user?.uid || null;
