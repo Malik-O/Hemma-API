@@ -3,6 +3,8 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import User from '../models/User';
+import HabitCategory from '../models/HabitCategory';
+import { DEFAULT_HABITS } from '../constants/defaultHabits';
 import generateToken from '../utils/generateToken';
 
 interface GooglePayload {
@@ -81,6 +83,16 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
     });
 
     if (user) {
+      // Add default habits
+      const defaultCategories = DEFAULT_HABITS.map((cat, index) => ({
+        ...cat,
+        uid: user.uid,
+        sortOrder: index,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+      await HabitCategory.insertMany(defaultCategories);
+
       res.status(201).json({
         _id: user._id,
         uid: user.uid,
@@ -132,6 +144,20 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
         passwordHash: '', // No password for Google auth users
         provider: 'google',
       });
+
+      // Add default habits
+      const defaultCategories = DEFAULT_HABITS.map((cat, index) => ({
+        ...cat,
+        uid: user!.uid,
+        sortOrder: index,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+      await HabitCategory.insertMany(defaultCategories);
+    }
+
+    if (!user) {
+      throw new Error('User could not be loaded or created');
     }
 
     res.json({
