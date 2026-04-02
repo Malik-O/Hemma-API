@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import HabitEntry from '../models/HabitEntry';
 import User from '../models/User';
 
-const XP_PER_HABIT = 10;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
@@ -25,7 +24,7 @@ interface LeaderboardEntry {
   uid: string;
   displayName: string;
   photoURL: string | null;
-  totalXp: number;
+  totalCompleted: number;
   streak: number;
   completionRate: number;
 }
@@ -70,7 +69,7 @@ function calculateStreak(dayMap: { date: string; completed: number }[]): number 
 
 // ─── Controller ──────────────────────────────────────────────────
 
-// @desc    Get paginated leaderboard (ranked by XP descending)
+// @desc    Get paginated leaderboard (ranked by completions descending)
 // @route   GET /api/leaderboard?page=1&pageSize=20
 // @access  Private
 export const getLeaderboard = async (req: Request, res: Response): Promise<void> => {
@@ -146,7 +145,6 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
           .map((stat) => {
             const userInfo = userLookup.get(stat._id);
             const streak = calculateStreak(stat.dayMap);
-            const totalXp = stat.totalCompleted * XP_PER_HABIT;
             const completionRate =
               stat.totalHabits > 0
                 ? Math.round((stat.totalCompleted / stat.totalHabits) * 100) / 100
@@ -157,12 +155,12 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
               uid: stat._id,
               displayName: userInfo?.displayName || 'مستخدم',
               photoURL: userInfo?.photoURL || null,
-              totalXp,
+              totalCompleted: stat.totalCompleted,
               streak,
               completionRate,
             };
           })
-          .sort((a, b) => b.totalXp - a.totalXp || b.streak - a.streak);
+          .sort((a, b) => b.totalCompleted - a.totalCompleted || b.streak - a.streak);
 
         // Assign ranks
         rankedEntries.forEach((entry, index) => {
