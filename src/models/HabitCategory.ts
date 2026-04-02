@@ -8,6 +8,7 @@ export interface IHabitItem {
   id: string;
   label: string;
   type: 'boolean' | 'number';
+  goal?: number;               // Optional goal for number-type habits
   repeat?: HabitRepeat;
   repeatDays?: number[];       // For weekly/biweekly: day-of-week (0=Sun..6=Sat)
   repeatMonthDay?: number;     // For monthly: day of month (1–31)
@@ -22,6 +23,7 @@ const HabitItemSchema = new Schema(
     id: { type: String, required: true },
     label: { type: String, required: true },
     type: { type: String, enum: ['boolean', 'number'], required: true },
+    goal: { type: Number, default: undefined },
     repeat: {
       type: String,
       enum: ['daily', 'weekly', 'biweekly', 'monthly', 'yearly'],

@@ -7,6 +7,7 @@ export interface IGroupHabitItem {
   id: string;
   label: string;
   type: 'boolean' | 'number';
+  goal?: number;
 }
 
 const GroupHabitItemSchema = new Schema(
@@ -14,6 +15,7 @@ const GroupHabitItemSchema = new Schema(
     id: { type: String, required: true },
     label: { type: String, required: true },
     type: { type: String, enum: ['boolean', 'number'], required: true },
+    goal: { type: Number, default: undefined },
   },
   { _id: false }
 );

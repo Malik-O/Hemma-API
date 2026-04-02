@@ -7,6 +7,7 @@ export interface ITemplateHabitItem {
   id: string;
   label: string;
   type: 'boolean' | 'number';
+  goal?: number;
   repeat?: HabitRepeat;
   repeatDays?: number[];
   repeatMonthDay?: number;
@@ -21,6 +22,7 @@ const TemplateHabitItemSchema = new Schema(
     id: { type: String, required: true },
     label: { type: String, required: true },
     type: { type: String, enum: ['boolean', 'number'], required: true },
+    goal: { type: Number, default: undefined },
     repeat: {
       type: String,
       enum: ['daily', 'weekly', 'biweekly', 'monthly', 'yearly'],
