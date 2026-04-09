@@ -17,7 +17,7 @@ interface CategoryPayload {
   categoryId: string;
   name: string;
   icon: string;
-  items: { id: string; label: string; type: 'boolean' | 'number'; repeat?: HabitRepeat }[];
+  items: { id: string; label: string; type: 'boolean' | 'number'; goal?: number; repeat?: HabitRepeat }[];
   sortOrder: number;
   updatedAt: string; // ISO string from client
 }

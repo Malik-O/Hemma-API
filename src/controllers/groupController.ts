@@ -69,6 +69,7 @@ export const getGroupInfoByCode = async (req: Request, res: Response): Promise<v
     res.json({
       _id: group._id,
       name: group.name,
+      description: (group as any).description || '',
       memberCount: group.memberUids?.length || 0,
       inviteCode: group.inviteCode,
     });
@@ -86,7 +87,7 @@ export const getGroupInfoByCode = async (req: Request, res: Response): Promise<v
 export const createGroup = async (req: Request, res: Response): Promise<void> => {
   try {
     const uid = req.user!.uid;
-    const { name } = req.body;
+    const { name, description } = req.body;
 
     if (!name || name.trim().length === 0) {
       res.status(400).json({ message: 'اسم المجموعة مطلوب' });
@@ -97,6 +98,7 @@ export const createGroup = async (req: Request, res: Response): Promise<void> =>
 
     const group = await Group.create({
       name: name.trim(),
+      description: description?.trim() || '',
       adminUid: uid,
       memberUids: [uid], // admin is also a member
       inviteCode,
@@ -308,8 +310,9 @@ export const updateGroup = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const { name } = req.body;
+    const { name, description } = req.body;
     if (name) group.name = name.trim();
+    if (typeof description === 'string') group.description = description.trim();
 
     await group.save();
     res.json(formatGroupResponse(group, uid));
@@ -514,6 +517,7 @@ function formatGroupResponse(group: IGroup | Record<string, unknown>, currentUid
   return {
     _id: g._id,
     name: g.name,
+    description: g.description || '',
     adminUid: g.adminUid,
     isAdmin: g.adminUid === currentUid,
     memberCount: g.memberUids?.length || 0,

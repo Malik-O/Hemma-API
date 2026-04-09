@@ -32,6 +32,7 @@ function toUserHabitItem(tItem: ITemplateHabitItem): IHabitItem {
     id: generateId(),
     label: tItem.label,
     type: tItem.type,
+    goal: tItem.goal,
     repeat: tItem.repeat || 'daily',
     repeatDays: tItem.repeatDays,
     repeatMonthDay: tItem.repeatMonthDay,
@@ -71,8 +72,11 @@ export const listTemplates = async (req: Request, res: Response): Promise<void> 
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(50, Math.max(1, Number(req.query.pageSize) || 20));
     const search = (req.query.search as string) || '';
-
-    const filter = search ? { $text: { $search: search } } : {};
+    const filter: any = search ? { $text: { $search: search } } : {};
+    
+    if (req.query.authorUid) {
+      filter.authorUid = req.query.authorUid;
+    }
 
     const [templates, totalCount] = await Promise.all([
       HabitTemplate.find(filter)
@@ -411,6 +415,66 @@ export const deleteTemplate = async (req: Request, res: Response): Promise<void>
     res.json({ message: 'Template deleted successfully' });
   } catch (error: any) {
     console.error('[templateController] Delete error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// ─── Update a template ──────────────────────────────────────────
+
+// @desc    Update a template (name, description, categories)
+// @route   PUT /api/templates/:id
+// @access  Private
+export const updateTemplate = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+
+  const { name, description, categories } = req.body as CreateTemplateBody;
+
+  if (!name?.trim()) {
+    res.status(400).json({ message: 'Template name is required' });
+    return;
+  }
+
+  if (!categories?.length) {
+    res.status(400).json({ message: 'At least one category is required' });
+    return;
+  }
+
+  try {
+    const template = await HabitTemplate.findById(req.params.id);
+
+    if (!template) {
+      res.status(404).json({ message: 'Template not found' });
+      return;
+    }
+
+    if (template.authorUid !== req.user.uid) {
+      res.status(403).json({ message: 'Only the author can update this template' });
+      return;
+    }
+
+    template.name = name.trim();
+    if (description !== undefined) {
+      template.description = description.trim();
+    }
+    template.categories = categories;
+
+    await template.save();
+
+    res.json({
+      _id: template._id,
+      name: template.name,
+      description: template.description,
+      authorName: template.authorName,
+      authorUid: template.authorUid,
+      categories: template.categories,
+      usageCount: template.usageCount,
+      createdAt: template.createdAt.toISOString(),
+    });
+  } catch (error: any) {
+    console.error('[templateController] Update error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 };

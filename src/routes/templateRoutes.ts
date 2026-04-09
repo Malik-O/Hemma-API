@@ -5,6 +5,7 @@ import {
   useTemplate,
   applyTemplate,
   deleteTemplate,
+  updateTemplate,
 } from '../controllers/templateController';
 import { protect } from '../middleware/authMiddleware';
 
@@ -17,6 +18,7 @@ router.get('/', listTemplates);
 router.post('/', protect, createTemplate);
 router.post('/:id/use', protect, useTemplate);
 router.post('/:id/apply', protect, applyTemplate);
+router.put('/:id', protect, updateTemplate);
 router.delete('/:id', protect, deleteTemplate);
 
 export default router;

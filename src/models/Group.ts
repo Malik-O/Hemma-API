@@ -43,6 +43,7 @@ const GroupCategorySchema = new Schema(
 
 export interface IGroup extends Document {
   name: string;
+  description: string;
   adminUid: string;
   memberUids: string[];
   inviteCode: string;
@@ -54,6 +55,7 @@ export interface IGroup extends Document {
 const GroupSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 50 },
+    description: { type: String, default: '', trim: true, maxlength: 200 },
     adminUid: { type: String, required: true, index: true },
     memberUids: { type: [String], default: [], index: true },
     inviteCode: {
