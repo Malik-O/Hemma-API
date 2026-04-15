@@ -12,6 +12,7 @@ import {
   updateGroupHabits,
   getGroupLeaderboard,
   getMemberProgress,
+  setMemberAdminStatus,
 } from '../controllers/groupController';
 
 const router = express.Router();
@@ -41,5 +42,8 @@ router.get('/:groupId/leaderboard', getGroupLeaderboard);
 
 // Admin: member detail progress
 router.get('/:groupId/members/:memberUid/progress', getMemberProgress);
+
+// Admin: set member admin status
+router.put('/:groupId/members/:memberUid/admin', setMemberAdminStatus);
 
 export default router;

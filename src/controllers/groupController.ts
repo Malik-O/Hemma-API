@@ -43,6 +43,14 @@ function getGroupHabitIds(categories: IGroupCategory[]): string[] {
   return categories.flatMap((cat) => cat.items.map((item) => item.id));
 }
 
+function checkIsGroupAdmin(group: IGroup, uid: string, userEmail?: string): boolean {
+  if (userEmail && isSystemAdmin(userEmail)) return true;
+  if (group.adminUid === uid) return true;
+  if (group.adminUids && group.adminUids.includes(uid)) return true;
+  return false;
+}
+
+
 // ─── Public Group Info (no auth) ─────────────────────────────────
 
 // @desc    Get basic group info by invite code (public, for join links)
@@ -240,7 +248,7 @@ export const deleteGroup = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    if (group.adminUid !== uid) {
+    if (!checkIsGroupAdmin(group, uid)) {
       res.status(403).json({ message: 'فقط المسؤول يمكنه حذف المجموعة' });
       return;
     }
@@ -268,7 +276,7 @@ export const updateGroupHabits = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    if (group.adminUid !== uid) {
+    if (!checkIsGroupAdmin(group, uid)) {
       res.status(403).json({ message: 'فقط المسؤول يمكنه تعديل العبادات' });
       return;
     }
@@ -305,7 +313,7 @@ export const updateGroup = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    if (group.adminUid !== uid) {
+    if (!checkIsGroupAdmin(group, uid)) {
       res.status(403).json({ message: 'فقط المسؤول يمكنه تعديل المجموعة' });
       return;
     }
@@ -460,7 +468,7 @@ export const getMemberProgress = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    if (group.adminUid !== uid && !isSystemAdmin(req.user!.email)) {
+    if (!checkIsGroupAdmin(group, uid, req.user!.email)) {
       res.status(403).json({ message: 'فقط المسؤول يمكنه عرض تفاصيل الأعضاء' });
       return;
     }
@@ -510,6 +518,58 @@ export const getMemberProgress = async (req: Request, res: Response): Promise<vo
   }
 };
 
+// ─── Admin: Set Member Admin Status ──────────────────────────────
+
+// @desc    Promote or demote a member to admin (admin only)
+// @route   PUT /api/groups/:groupId/members/:memberUid/admin
+// @access  Private (admin only)
+export const setMemberAdminStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const uid = req.user!.uid;
+    const { groupId, memberUid } = req.params;
+    const { isAdmin } = req.body;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      res.status(404).json({ message: 'المجموعة غير موجودة' });
+      return;
+    }
+
+    if (!checkIsGroupAdmin(group, uid, req.user!.email)) {
+      res.status(403).json({ message: 'فقط المسؤول يمكنه تعديل صلاحيات الأعضاء' });
+      return;
+    }
+
+    if (!group.memberUids.includes(memberUid)) {
+      res.status(404).json({ message: 'العضو غير موجود في هذه المجموعة' });
+      return;
+    }
+
+    if (!group.adminUids) {
+      group.adminUids = [];
+    }
+
+    if (isAdmin) {
+      if (group.adminUid !== memberUid && !group.adminUids.includes(memberUid)) {
+        group.adminUids.push(memberUid);
+      }
+    } else {
+      if (group.adminUid === memberUid) {
+        res.status(400).json({ message: 'لا يمكن إزالة صلاحيات المنشئ الأساسي' });
+        return;
+      }
+      group.adminUids = group.adminUids.filter((id) => id !== memberUid);
+    }
+
+    await group.save();
+    res.json(formatGroupResponse(group, uid));
+  } catch (error) {
+    console.error('[groupController] setMemberAdminStatus error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 // ─── Response Formatter ──────────────────────────────────────────
 
 function formatGroupResponse(group: IGroup | Record<string, unknown>, currentUid: string) {
@@ -519,7 +579,8 @@ function formatGroupResponse(group: IGroup | Record<string, unknown>, currentUid
     name: g.name,
     description: g.description || '',
     adminUid: g.adminUid,
-    isAdmin: g.adminUid === currentUid,
+    adminUids: g.adminUids || [],
+    isAdmin: checkIsGroupAdmin(g, currentUid),
     memberCount: g.memberUids?.length || 0,
     inviteCode: g.inviteCode,
     categories: g.categories || [],
